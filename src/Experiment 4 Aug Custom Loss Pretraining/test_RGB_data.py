@@ -52,16 +52,18 @@ def get_all_compositions(image_height, image_width):
     for elem in rgb_shift_values:
         list_of_compositions.append(get_augmentation_composition(image_height, image_width, A.augmentations.transforms.RGBShift(r_shift_limit=0 , g_shift_limit=0, b_shift_limit=[elem, elem], always_apply=True, p=1)))    
     
-    list_of_compositions.append(get_augmentation_composition())
+    list_of_compositions.append(get_augmentation_composition(image_height, image_width))
     return list_of_compositions
 
 
 class RGBDataset(Dataset):
     def __init__(self, dataframe, shape = (image_height, image_width), transform=None):
+        self.image_height = image_height
+        self.image_width = image_width
         self.dataframe = dataframe
         self.shape = shape
         self.transform = transform
-        self.augmentation_list = get_all_compositions(image_height, image_width)
+        self.augmentation_list = get_all_compositions(self.image_height, self.image_width)
         if self.transform ==None:
             self.Aug = Aug_Hyperspectral_Data(self.shape, list_augmentations = [])
         else:
@@ -72,18 +74,13 @@ class RGBDataset(Dataset):
     def __getitem__(self, idx):
         data_path = self.dataframe["path"].iloc[idx]  # Assuming "path" column is the first column
         label = self.dataframe["label"].iloc[idx]  # Assuming "label" column is the second column
-    
-        
-
         img = cv2.imread(data_path)
-
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         image_list = []
         
-        
         for i, transform in enumerate(self.augmentation_list):
-            transformed = transform(image=img)#, mask=mask)
+            transformed = transform(image=img.copy())
             transformed_image = transformed["image"]
             image_list.append(transformed_image)
 
