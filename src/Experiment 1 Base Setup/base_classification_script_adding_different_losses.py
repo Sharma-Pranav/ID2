@@ -27,6 +27,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class PickleDataset(Dataset):
     def __init__(self, dataframe, transform=None):
+        """
+        Dataset class for loading data from pickled files.
+
+        Args:
+            dataframe (pandas.DataFrame): DataFrame containing file paths and labels.
+            transform (callable, optional): A function/transform to apply to the data.
+
+        Example:
+            dataset = PickleDataset(dataframe, transform=data_transform)
+        """
         self.dataframe = dataframe
         self.transform = transform
     
@@ -34,6 +44,18 @@ class PickleDataset(Dataset):
         return len(self.dataframe)
     
     def process_using_histogram(self, data):
+        """
+        Apply histogram equalization to input data.
+
+        Args:
+            data (numpy.ndarray): Input data to be equalized.
+
+        Returns:
+            numpy.ndarray: Equalized data.
+
+        Example:
+            equalized_data = self.process_using_histogram(data)
+        """
         # Scale the data to match the range of the histogram bins and convert to int
         scaled_data = (data * 4096).astype(int)
         
@@ -52,6 +74,18 @@ class PickleDataset(Dataset):
         return equalised / 4096
         
     def __getitem__(self, idx):
+        """
+        Get a data point from the dataset.
+
+        Args:
+            idx (int): Index of the data point to retrieve.
+
+        Returns:
+            tuple: A tuple containing data and its corresponding label.
+
+        Example:
+            data, label = dataset[0]
+        """
         data_path = self.dataframe["path"].iloc[idx]  # Assuming "path" column is the first column
         label = self.dataframe["label"].iloc[idx]  # Assuming "label" column is the second column
         data_path = os.path.join("..", data_path)
@@ -70,9 +104,35 @@ class PickleDataset(Dataset):
         return data, label
     
 def count_trainable_parameters(model):
+    """
+    Count the number of trainable parameters in a PyTorch model.
+
+    Args:
+        model (nn.Module): PyTorch model.
+
+    Returns:
+        int: Number of trainable parameters.
+
+    Example:
+        num_params = count_trainable_parameters(model)
+    """
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def freeze_layers_except_first_m_last_n(model,m, n):
+    """
+    Freeze layers in a PyTorch model except for the first m layers and the last n layers.
+
+    Args:
+        model (nn.Module): PyTorch model.
+        m (int): Number of initial layers to keep trainable.
+        n (int): Number of final layers to keep trainable.
+
+    Returns:
+        nn.Module: Model with specified layers frozen.
+
+    Example:
+        model = freeze_layers_except_first_m_last_n(model, 5, 3)
+    """
     # Freeze all layers
     for param in model.parameters():
         param.requires_grad = False
@@ -90,6 +150,24 @@ def freeze_layers_except_first_m_last_n(model,m, n):
     return model
 
 def train_test_loop(model, optimizer, num_epochs, trainloader, valloader, fold, best_model_path = os.path.join("models", "best_model.pth") ):
+    """
+    Training and testing loop for a PyTorch model.
+
+    Args:
+        model (nn.Module): PyTorch model to train.
+        optimizer (torch.optim.Optimizer): Optimizer for training.
+        num_epochs (int): Number of training epochs.
+        trainloader (DataLoader): DataLoader for training data.
+        valloader (DataLoader): DataLoader for validation data.
+        fold (int): Fold number (for tracking purposes).
+        best_model_path (str): Path to save the best model checkpoint.
+
+    Returns:
+        float: Best accuracy achieved during training.
+
+    Example:
+        best_accuracy = train_test_loop(model, optimizer, num_epochs, train_loader, val_loader, 1)
+    """
     best_accuracy = 0.0  # Initialize best accuracy
     for epoch in range(num_epochs):
             model.train()
@@ -141,17 +219,51 @@ def train_test_loop(model, optimizer, num_epochs, trainloader, valloader, fold, 
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=1, gamma=2):
+        """
+        Focal Loss for classification tasks.
+
+        Args:
+            alpha (float): Weighting factor for balancing class distribution.
+            gamma (float): Focusing parameter for controlling the loss curve.
+
+        Example:
+            loss_fn = FocalLoss(alpha=1, gamma=2)
+        """
         super(FocalLoss, self).__init__()
         self.alpha = alpha
         self.gamma = gamma
 
     def forward(self, input, target):
+        """
+        Compute the Focal Loss.
+
+        Args:
+            input (torch.Tensor): Predicted class scores.
+            target (torch.Tensor): Ground truth class labels.
+
+        Returns:
+            torch.Tensor: Computed Focal Loss.
+
+        Example:
+            loss = loss_fn(outputs, labels)
+        """
         ce_loss = nn.CrossEntropyLoss()(input, target)
         pt = torch.exp(-ce_loss)
         focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
         return focal_loss
     
 class CombinedLoss(nn.Module):
+        """
+        Combined Loss for multi-objective learning tasks.
+
+        Args:
+            alpha (float): Weight for cross-entropy loss.
+            beta (float): Weight for focal loss.
+            gamma (float): Weight for Kullback-Leibler divergence loss.
+
+        Example:
+            loss_fn = CombinedLoss(alpha=1, beta=2, gamma=0.5)
+        """
     def __init__(self, alpha, beta, gamma):
         super(CombinedLoss, self).__init__()
         self.alpha = alpha
@@ -163,6 +275,19 @@ class CombinedLoss(nn.Module):
         self.kldiv_loss = nn.KLDivLoss(reduction='batchmean')  # Add reduction argument
         
     def forward(self, y_pred, y_true):
+        """
+        Compute the Combined Loss.
+
+        Args:
+            y_pred (torch.Tensor): Predicted class scores.
+            y_true (torch.Tensor): Ground truth class labels.
+
+        Returns:
+            torch.Tensor: Computed Combined Loss.
+
+        Example:
+            loss = loss_fn(outputs, labels)
+        """
         ce_loss = self.cross_entropy(y_pred, y_true)
         focal_loss = self.focal_loss(y_pred, y_true)
         

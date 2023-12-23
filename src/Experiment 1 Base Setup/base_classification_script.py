@@ -23,6 +23,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class PickleDataset(Dataset):
     def __init__(self, dataframe, transform=None):
+        """
+        Dataset class for loading data from pickled files.
+
+        Args:
+            dataframe (pandas.DataFrame): DataFrame containing file paths and labels.
+            transform (callable, optional): A function/transform to apply to the data.
+
+        Example:
+            dataset = PickleDataset(dataframe, transform=data_transform)
+        """
         self.dataframe = dataframe
         self.transform = transform
     
@@ -30,6 +40,18 @@ class PickleDataset(Dataset):
         return len(self.dataframe)
     
     def __getitem__(self, idx):
+        """
+        Get a data point from the dataset.
+
+        Args:
+            idx (int): Index of the data point to retrieve.
+
+        Returns:
+            tuple: A tuple containing data and its corresponding label.
+
+        Example:
+            data, label = dataset[0]
+        """
         data_path = self.dataframe["path"].iloc[idx]  # Assuming "path" column is the first column
         label = self.dataframe["label"].iloc[idx]  # Assuming "label" column is the second column
         data_path = os.path.join("..", data_path)
@@ -47,9 +69,35 @@ class PickleDataset(Dataset):
         return data, label
     
 def count_trainable_parameters(model):
+    """
+    Count the number of trainable parameters in a PyTorch model.
+
+    Args:
+        model (torch.nn.Module): The PyTorch model to count trainable parameters.
+
+    Returns:
+        int: The total number of trainable parameters in the model.
+
+    Example:
+        num_params = count_trainable_parameters(model)
+    """
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def freeze_layers_except_first_m_last_n(model,m, n):
+    """
+    Freeze layers in a PyTorch model, except for the first m and last n layers.
+
+    Args:
+        model (torch.nn.Module): The PyTorch model.
+        m (int): Number of initial layers to leave unfrozen.
+        n (int): Number of final layers to leave unfrozen.
+
+    Returns:
+        torch.nn.Module: The modified model with frozen layers.
+
+    Example:
+        model = freeze_layers_except_first_m_last_n(model, 2, 2)
+    """
     # Freeze all layers
     for param in model.parameters():
         param.requires_grad = False
