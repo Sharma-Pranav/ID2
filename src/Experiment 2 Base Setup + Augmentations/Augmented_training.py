@@ -28,6 +28,24 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class PickleDataset(Dataset):
+    """
+    Custom PyTorch dataset for loading data from pickle files.
+
+    Args:
+        dataframe (pd.DataFrame): DataFrame containing file paths and labels.
+        shape (tuple): Tuple specifying the shape of the data.
+        transform (list or None): List of augmentations to apply or None.
+
+    Attributes:
+        dataframe (pd.DataFrame): DataFrame containing file paths and labels.
+        shape (tuple): Tuple specifying the shape of the data.
+        transform (list or None): List of augmentations to apply or None.
+        Aug (Aug_Hyperspectral_Data): Augmentation object.
+
+    Methods:
+        __len__(): Get the number of samples in the dataset.
+        __getitem__(idx): Get a sample and its corresponding label.
+    """
     def __init__(self, dataframe, shape = (512, 512), transform=None):
         self.dataframe = dataframe
         self.shape = shape
@@ -37,9 +55,24 @@ class PickleDataset(Dataset):
         else:
             self.Aug = Aug_Hyperspectral_Data(self.shape, list_augmentations = self.transform )
     def __len__(self):
+        """
+        Get the number of samples in the dataset.
+
+        Returns:
+            int: Number of samples.
+        """
         return len(self.dataframe)
     
     def __getitem__(self, idx):
+        """
+        Get a sample and its corresponding label.
+
+        Args:
+            idx (int): Index of the sample.
+
+        Returns:
+            tuple: A tuple containing the data and its label.
+        """
         data_path = self.dataframe["path"].iloc[idx]  # Assuming "path" column is the first column
         label = self.dataframe["label"].iloc[idx]  # Assuming "label" column is the second column
         data_path = os.path.join("..", data_path)
@@ -61,9 +94,29 @@ class PickleDataset(Dataset):
         return data, label
     
 def count_trainable_parameters(model):
+    """
+    Count the number of trainable parameters in a PyTorch model.
+
+    Args:
+        model (nn.Module): PyTorch model.
+
+    Returns:
+        int: Number of trainable parameters.
+    """
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def freeze_layers_except_first_m_last_n(model,m, n):
+    """
+    Freeze layers in a PyTorch model, except for the first m and last n layers.
+
+    Args:
+        model (nn.Module): PyTorch model.
+        m (int): Number of initial layers to keep trainable.
+        n (int): Number of final layers to keep trainable.
+
+    Returns:
+        nn.Module: Modified PyTorch model.
+    """
     # Freeze all layers
     for param in model.parameters():
         param.requires_grad = False
@@ -81,6 +134,21 @@ def freeze_layers_except_first_m_last_n(model,m, n):
     return model
 
 def train_test_loop(model, optimizer, num_epochs, trainloader, valloader, fold, best_model_path = os.path.join("models", "best_model.pth") ):
+    """
+    Train and evaluate a PyTorch model over multiple epochs.
+
+    Args:
+        model (nn.Module): PyTorch model.
+        optimizer: PyTorch optimizer.
+        num_epochs (int): Number of training epochs.
+        trainloader (DataLoader): DataLoader for training data.
+        valloader (DataLoader): DataLoader for validation data.
+        fold (int): Fold number.
+        best_model_path (str): Path to save the best model checkpoint.
+
+    Returns:
+        float: Best accuracy achieved during training.
+    """
     best_accuracy = 0.0  # Initialize best accuracy
 
     fold_desc = "Training on fold : "+ str(fold)
@@ -187,7 +255,7 @@ if __name__ == '__main__':
                                         bias=True)
         
         print(f"No. of parameters before freezing layers : ", count_trainable_parameters(model))
-        #model = freeze_layers_except_first_m_last_n(model, 1, 9)
+
         print(f"No. of parameters after freezing layers : ", count_trainable_parameters(model))
 
         
