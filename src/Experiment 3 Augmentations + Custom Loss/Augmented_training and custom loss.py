@@ -28,7 +28,33 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class PickleDataset(Dataset):
+    """
+    Custom PyTorch dataset for loading data from pickle files.
+
+    Args:
+        dataframe (pd.DataFrame): DataFrame containing file paths and labels.
+        shape (tuple): Tuple specifying the shape of the data.
+        transform (list or None): List of augmentations to apply or None.
+
+    Attributes:
+        dataframe (pd.DataFrame): DataFrame containing file paths and labels.
+        shape (tuple): Tuple specifying the shape of the data.
+        transform (list or None): List of augmentations to apply or None.
+        Aug (Aug_Hyperspectral_Data): Augmentation object.
+
+    Methods:
+        __len__(): Get the number of samples in the dataset.
+        __getitem__(idx): Get a sample and its corresponding label.
+    """
     def __init__(self, dataframe, shape = (512, 512), transform=None):
+        """
+        Initialize the PickleDataset.
+
+        Args:
+            dataframe (pd.DataFrame): DataFrame containing file paths and labels.
+            shape (tuple, optional): Tuple specifying the shape of the data. Defaults to (512, 512).
+            transform (list or None, optional): List of augmentations to apply or None. Defaults to None.
+        """
         self.dataframe = dataframe
         self.shape = shape
         self.transform = transform
@@ -37,9 +63,24 @@ class PickleDataset(Dataset):
         else:
             self.Aug = Aug_Hyperspectral_Data(self.shape, list_augmentations = self.transform )
     def __len__(self):
+        """
+        Get the number of samples in the dataset.
+
+        Returns:
+            int: Number of samples.
+        """
         return len(self.dataframe)
     
     def __getitem__(self, idx):
+        """
+        Get a sample and its corresponding label.
+
+        Args:
+            idx (int): Index of the sample.
+
+        Returns:
+            tuple: A tuple containing the data and its label.
+        """
         data_path = self.dataframe["path"].iloc[idx]  # Assuming "path" column is the first column
         label = self.dataframe["label"].iloc[idx]  # Assuming "label" column is the second column
         data_path = os.path.join("..", data_path)
@@ -61,9 +102,29 @@ class PickleDataset(Dataset):
         return data, label
     
 def count_trainable_parameters(model):
+    """
+    Count the number of trainable parameters in a PyTorch model.
+
+    Args:
+        model (nn.Module): PyTorch model.
+
+    Returns:
+        int: Number of trainable parameters.
+    """
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def freeze_layers_except_first_m_last_n(model,m, n):
+    """
+    Freeze layers in a PyTorch model, except for the first m and last n layers.
+
+    Args:
+        model (nn.Module): PyTorch model.
+        m (int): Number of initial layers to keep trainable.
+        n (int): Number of final layers to keep trainable.
+
+    Returns:
+        nn.Module: Modified PyTorch model.
+    """
     # Freeze all layers
     for param in model.parameters():
         param.requires_grad = False
@@ -81,6 +142,21 @@ def freeze_layers_except_first_m_last_n(model,m, n):
     return model
 
 def train_test_loop(model, optimizer, num_epochs, trainloader, valloader, fold, best_model_path = os.path.join("models", "best_model.pth") ):
+    """
+    Train and evaluate a PyTorch model over multiple epochs.
+
+    Args:
+        model (nn.Module): PyTorch model.
+        optimizer: PyTorch optimizer.
+        num_epochs (int): Number of training epochs.
+        trainloader (DataLoader): DataLoader for training data.
+        valloader (DataLoader): DataLoader for validation data.
+        fold (int): Fold number.
+        best_model_path (str, optional): Path to save the best model checkpoint. Defaults to "models/best_model.pth".
+
+    Returns:
+        float: Best accuracy achieved during training.
+    """
     best_accuracy = 0.0  # Initialize best accuracy
 
     fold_desc = "Training on fold : "+ str(fold)
@@ -135,12 +211,43 @@ def train_test_loop(model, optimizer, num_epochs, trainloader, valloader, fold, 
 
 
 class FocalLoss(nn.Module):
+    """
+    Focal Loss is a custom loss function designed to address class imbalance in classification tasks.
+    
+    Args:
+        alpha (float, optional): A hyperparameter that controls the weight assigned to each class.
+            Defaults to 1.
+        gamma (float, optional): A hyperparameter that controls the focusing effect of the loss.
+            Higher values give more focus to hard-to-classify examples. Defaults to 2.
+    
+    Attributes:
+        alpha (float): The alpha hyperparameter.
+        gamma (float): The gamma hyperparameter.
+    
+    Methods:
+        forward(input, target):
+            Compute the Focal Loss given input predictions and target labels.
+    
+    Examples:
+        >>> criterion = FocalLoss(alpha=1, gamma=2)
+        >>> loss = criterion(predictions, labels)
+    """
     def __init__(self, alpha=1, gamma=2):
         super(FocalLoss, self).__init__()
         self.alpha = alpha
         self.gamma = gamma
 
     def forward(self, input, target):
+        """
+        Compute the Focal Loss given input predictions and target labels.
+        
+        Args:
+            input (Tensor): The predicted class scores from the model.
+            target (Tensor): The true class labels.
+        
+        Returns:
+            Tensor: The computed Focal Loss.
+        """
         ce_loss = nn.CrossEntropyLoss()(input, target)
         pt = torch.exp(-ce_loss)
         focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
@@ -148,6 +255,28 @@ class FocalLoss(nn.Module):
 
 
 class CombinedLoss(nn.Module):
+    """
+    CombinedLoss is a custom loss function that combines Cross-Entropy Loss, Focal Loss,
+    and Kullback-Leibler Divergence Loss in a linear combination.
+    
+    Args:
+        alpha (float): Coefficient for Cross-Entropy Loss.
+        beta (float): Coefficient for Focal Loss.
+        gamma (float): Coefficient for Kullback-Leibler Divergence Loss.
+    
+    Attributes:
+        alpha (float): Coefficient for Cross-Entropy Loss.
+        beta (float): Coefficient for Focal Loss.
+        gamma (float): Coefficient for Kullback-Leibler Divergence Loss.
+    
+    Methods:
+        forward(y_pred, y_true):
+            Compute the Combined Loss given predicted class scores and true class labels.
+    
+    Examples:
+        >>> criterion = CombinedLoss(alpha=0.5, beta=0.2, gamma=0.3)
+        >>> loss = criterion(predictions, labels)
+    """
     def __init__(self, alpha, beta, gamma):
         super(CombinedLoss, self).__init__()
         self.alpha = alpha
@@ -159,6 +288,16 @@ class CombinedLoss(nn.Module):
         self.kldiv_loss = nn.KLDivLoss(reduction='batchmean')  # Add reduction argument
         
     def forward(self, y_pred, y_true):
+        """
+        Compute the Combined Loss given predicted class scores and true class labels.
+        
+        Args:
+            y_pred (Tensor): The predicted class scores from the model.
+            y_true (Tensor): The true class labels.
+        
+        Returns:
+            Tensor: The computed Combined Loss.
+        """
         ce_loss = self.cross_entropy(y_pred, y_true)
         focal_loss = self.focal_loss(y_pred, y_true)
         
@@ -228,14 +367,14 @@ if __name__ == '__main__':
                                         bias=True)
         
         print(f"No. of parameters before freezing layers : ", count_trainable_parameters(model))
-        #model = freeze_layers_except_first_m_last_n(model, 1, 9)
+
         print(f"No. of parameters after freezing layers : ", count_trainable_parameters(model))
 
         
         
         model = model.to(device)
         criterion = CombinedLoss(alpha=0.5, beta=0.3, gamma=0.2)
-        #criterion = nn.CrossEntropyLoss()
+
         optimizer = optim.Adam(model.parameters(), lr=0.003)
         # Training loop
         
