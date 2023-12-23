@@ -7,6 +7,36 @@ import torch.autograd as autograd
 from tqdm import tqdm
 import scipy.optimize as op
 class ResNetLayer(nn.Module):
+    """
+    Implements a Residual Block layer for neural networks.
+
+    Args:
+        n_channels (int): The number of input channels to the layer.
+        n_inner_channels (int): The number of inner channels used in the layer.
+        kernel_size (int, optional): The size of the convolutional kernel. Default is 3.
+        num_groups (int, optional): The number of groups for group normalization. Default is 8.
+
+    Attributes:
+        conv1 (torch.nn.Conv2d): The first convolutional layer.
+        conv2 (torch.nn.Conv2d): The second convolutional layer.
+        norm1 (torch.nn.GroupNorm): The first group normalization layer.
+        norm2 (torch.nn.GroupNorm): The second group normalization layer.
+        norm3 (torch.nn.GroupNorm): The third group normalization layer.
+
+    Methods:
+        __init__(self, n_channels, n_inner_channels, kernel_size=3, num_groups=8):
+            Initializes a ResNetLayer instance with the specified parameters.
+
+        forward(self, z, x):
+            Performs a forward pass through the ResNetLayer.
+
+    Example:
+        >>> import torch.nn as nn
+        >>> # Create a ResNetLayer with 64 input channels and 128 inner channels
+        >>> layer = ResNetLayer(64, 128)
+        >>> # Perform a forward pass through the layer
+        >>> output = layer(input_z, input_x)
+    """
     def __init__(self, n_channels, n_inner_channels, kernel_size=3, num_groups=8):
         super().__init__()
         self.conv1 = nn.Conv2d(n_channels, n_inner_channels, kernel_size, padding=kernel_size//2, bias=False)
@@ -18,10 +48,41 @@ class ResNetLayer(nn.Module):
         self.conv2.weight.data.normal_(0, 0.01)
         
     def forward(self, z, x):
+        """
+        Forward pass through the ResNetLayer.
+
+        Args:
+            z (torch.Tensor): The input tensor to the layer.
+            x (torch.Tensor): The input tensor that will be added to the output of the layer.
+
+        Returns:
+            torch.Tensor: The output tensor of the layer.
+
+        Example:
+            >>> output = layer(input_z, input_x)
+        """
         y = self.norm1(F.relu(self.conv1(z)))
         return self.norm3(F.relu(z + self.norm2(x + self.conv2(y))))
     
 def chebyshev_acceleration(f, x0, max_iter=50, tol=1e-2):
+    """
+    Accelerates convergence using Chebyshev acceleration.
+
+    This function iteratively applies Chebyshev acceleration to estimate the fixed point of the function `f`.
+
+    Args:
+        f (callable): The function for which the fixed point is sought.
+        x0 (torch.Tensor): The initial guess for the fixed point.
+        max_iter (int, optional): The maximum number of iterations. Default is 50.
+        tol (float, optional): The tolerance for convergence. Default is 1e-2.
+
+    Returns:
+        torch.Tensor: The estimated fixed point.
+        list: A list of relative residuals at each iteration.
+
+    Example:
+        >>> estimated_fixed_point, residuals = chebyshev_acceleration(f, x0, max_iter=100, tol=1e-3)
+    """
     x = x0
     res = []
     for k in range(max_iter):
@@ -38,6 +99,24 @@ def chebyshev_acceleration(f, x0, max_iter=50, tol=1e-2):
 
 
 def forward_iteration(f, x0, max_iter=50, tol=1e-2):
+    """
+    Iteratively applies a function to estimate its fixed point.
+
+    This function iteratively applies the function `f` to estimate its fixed point starting from an initial guess `x0`.
+
+    Args:
+        f (callable): The function for which the fixed point is sought.
+        x0 (torch.Tensor): The initial guess for the fixed point.
+        max_iter (int, optional): The maximum number of iterations. Default is 50.
+        tol (float, optional): The tolerance for convergence. Default is 1e-2.
+
+    Returns:
+        torch.Tensor: The estimated fixed point.
+        list: A list of relative residuals at each iteration.
+
+    Example:
+        >>> estimated_fixed_point, residuals = forward_iteration(f, x0, max_iter=100, tol=1e-3)
+    """
     f0 = f(x0)
     res = []
     for k in range(max_iter):
@@ -75,6 +154,31 @@ plt.show()
 
 
 class DEQFixedPoint(nn.Module):
+    """
+    A module for solving a fixed-point equation using differential equation solvers.
+
+    This class represents a module that aims to find the fixed point of a function `f` by iteratively applying it.
+    It utilizes a provided solver function to accelerate convergence.
+
+    Args:
+        f (callable): The function for which the fixed point is sought.
+        solver (callable): The solver function used to accelerate convergence.
+        **kwargs: Additional keyword arguments to be passed to the solver function.
+
+    Attributes:
+        f (callable): The function for which the fixed point is sought.
+        solver (callable): The solver function used to accelerate convergence.
+        kwargs (dict): Additional keyword arguments for the solver.
+
+    Methods:
+        forward(x): Compute the fixed point using the provided solver.
+
+    Example:
+        >>> f = ResNetLayer(64, 128)
+        >>> deq = DEQFixedPoint(f, chebyshev_acceleration, tol=1e-10, max_iter=500)
+        >>> estimated_fixed_point = deq(torch.randn(1, 64, 32, 32))
+    """
+
     def __init__(self, f, solver, **kwargs):
         super().__init__()
         self.f = f
@@ -82,6 +186,18 @@ class DEQFixedPoint(nn.Module):
         self.kwargs = kwargs
         
     def forward(self, x):
+        """
+        Compute the fixed point of the function `f` using the provided solver.
+
+        Args:
+            x (torch.Tensor): The input to the function `f`.
+
+        Returns:
+            torch.Tensor: The estimated fixed point.
+
+        Example:
+            >>> estimated_fixed_point = deq(torch.randn(1, 64, 32, 32))
+        """
         # Compute forward pass and re-engage autograd tape
         with torch.no_grad():
             z, self.forward_res = self.solver(lambda z : self.f(z, x), torch.zeros_like(x), **self.kwargs)
@@ -136,6 +252,25 @@ test_loader = DataLoader(mnist_test, batch_size = 10, shuffle=False, num_workers
 
 # standard training or evaluation loop
 def epoch(loader, model, opt=None, lr_scheduler=None):
+    """
+    Run one epoch of training or evaluation on a given dataset.
+
+    This function performs one pass (epoch) through a dataset, either for training or evaluation.
+    It computes the loss, accuracy, and updates the model's weights if an optimizer is provided.
+
+    Args:
+        loader (torch.utils.data.DataLoader): The data loader for the dataset.
+        model (torch.nn.Module): The neural network model.
+        opt (torch.optim.Optimizer, optional): The optimizer for updating model weights during training.
+        lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): Learning rate scheduler for optimizer.
+
+    Returns:
+        tuple: A tuple containing the accuracy and average loss for the epoch.
+
+    Example:
+        >>> train_accuracy, train_loss = epoch(train_loader, model, opt, scheduler)
+        >>> test_accuracy, test_loss = epoch(test_loader, model)
+    """
     total_loss, total_accuracy = 0., 0.
     model.eval() if opt is None else model.train()
     correct_predictions = 0
