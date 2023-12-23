@@ -37,6 +37,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class PickleDataset(Dataset):
+    """
+    Custom PyTorch dataset for loading and preprocessing pickled image data.
+
+    Args:
+        dataframe (DataFrame): The DataFrame containing image paths and labels.
+        shape (tuple): The desired shape of the images (default is (512, 512)).
+        transform (callable): A composition of image augmentation transformations (default is None).
+    """
     def __init__(self, dataframe, shape = (512, 512), transform=None):
         self.dataframe = dataframe
         self.shape = shape
@@ -48,9 +56,22 @@ class PickleDataset(Dataset):
         else:
             self.Aug = transform
     def __len__(self):
+        """
+        Returns the number of samples in the dataset.
+        """
         return len(self.dataframe)
     
     def __getitem__(self, idx):
+        """
+        Loads and preprocesses an image at the given index.
+
+        Args:
+            idx (int): Index of the image in the dataset.
+
+        Returns:
+            img (Tensor): Preprocessed image.
+            label (Tensor): Label associated with the image.
+        """
         data_path = self.dataframe["path"].iloc[idx]  # Assuming "path" column is the first column
         folders = os.path.normpath(data_path).split("\\")
         label = self.dataframe["label"].iloc[idx]  # Assuming "label" column is the second column
@@ -68,6 +89,14 @@ class PickleDataset(Dataset):
 
 
 class RGBDataset(Dataset):
+    """
+    Custom PyTorch dataset for loading and preprocessing RGB image data.
+
+    Args:
+        dataframe (DataFrame): The DataFrame containing RGB image paths and labels.
+        shape (tuple): The desired shape of the images (default is (512, 512)).
+        transform (callable): A composition of image augmentation transformations (default is None).
+    """
     def __init__(self, dataframe, shape = (512, 512), transform=None):
         self.dataframe = dataframe
         self.shape = shape
@@ -79,9 +108,22 @@ class RGBDataset(Dataset):
         else:
             self.Aug = transform
     def __len__(self):
+        """
+        Returns the number of samples in the dataset.
+        """
         return len(self.dataframe)
     
     def __getitem__(self, idx):
+        """
+        Loads and preprocesses an RGB image at the given index.
+
+        Args:
+            idx (int): Index of the RGB image in the dataset.
+
+        Returns:
+            img (Tensor): Preprocessed RGB image.
+            label (Tensor): Label associated with the RGB image.
+        """
         data_path = self.dataframe["path"].iloc[idx]  # Assuming "path" column is the first column
         
         
@@ -102,9 +144,29 @@ class RGBDataset(Dataset):
 
  
 def count_trainable_parameters(model):
+    """
+    Count the number of trainable parameters in a PyTorch model.
+
+    Args:
+        model (nn.Module): The PyTorch model.
+
+    Returns:
+        int: The total number of trainable parameters in the model.
+    """
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def freeze_layers_except_first_m_last_n(model,m, n):
+    """
+    Freeze layers in a PyTorch model, except for the first 'm' layers and the last 'n' layers.
+
+    Args:
+        model (nn.Module): The PyTorch model.
+        m (int): Number of initial layers to leave unfrozen.
+        n (int): Number of final layers to leave unfrozen.
+
+    Returns:
+        nn.Module: The modified PyTorch model with specified layers unfrozen.
+    """
     # Freeze all layers
     for param in model.parameters():
         param.requires_grad = False
@@ -125,8 +187,25 @@ def freeze_layers_except_first_m_last_n(model,m, n):
 
 
 def train_test_loop(model, optimizer, criterion, epoch, trainloader, valloader, fold, total_classes):
+    """
+    Perform the training and testing loop for a PyTorch model.
 
-    
+    Args:
+        model (nn.Module): The PyTorch model to be trained and tested.
+        optimizer (torch.optim.Optimizer): The optimizer used for model optimization.
+        criterion (nn.Module): The loss function used for training.
+        epoch (int): The current epoch number.
+        trainloader (DataLoader): DataLoader for the training dataset.
+        valloader (DataLoader): DataLoader for the validation dataset.
+        fold (int): The fold number for cross-validation.
+        total_classes (int): The total number of classes in the dataset.
+
+    Returns:
+        tuple: A tuple containing:
+            - float: The running loss during training.
+            - float: The accuracy achieved on the validation dataset.
+            - dict: A dictionary containing various evaluation metrics.
+    """
     metric_dictionary = get_metric_dictionary(total_classes)
     fold_desc = f"Training on fold : {fold} and epoch  {epoch}"
     for _ in tqdm(range(1), desc=fold_desc):
@@ -135,7 +214,6 @@ def train_test_loop(model, optimizer, criterion, epoch, trainloader, valloader, 
         train_desc = "Training on fold, epoch : "+ str(fold) + "_" + str(epoch)
         for i, data in tqdm(enumerate(trainloader, 0), desc=train_desc):
             inputs, labels = data
-            #print("Training inputs, labels : ", inputs.shape, labels.shape)
             inputs, labels = inputs.to(device), labels.to(device)
 
             optimizer.zero_grad()
@@ -164,31 +242,45 @@ def train_test_loop(model, optimizer, criterion, epoch, trainloader, valloader, 
                 running_loss += loss.item()
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
-                #print("predicted : ", predicted)
-                #print("labels : ", labels)
+
                 correct += (predicted == labels).sum().item() 
                 
                 # Update metrics for each sample
                 for metric_name, metric_instance in metric_dictionary.items():
-                    #print(metric_name)
-                    #metric_value = metric_instance(outputs.to(device), labels.to(device))
-                    #print(metric_value)
                     metric_instance.update(outputs.to(device), labels.to(device))
-                
-            #print("correct", correct)
-            #print("total", total)
+
             accuracy = 100 * (correct / total)
             
     return running_loss, accuracy , metric_dictionary
 
 
 class FocalLoss(nn.Module):
+    """
+    Focal Loss for classification tasks.
+
+    Args:
+        alpha (float): The weight factor for the rare class (default is 1.0).
+        gamma (float): The focusing parameter (default is 2.0).
+
+    Returns:
+        torch.Tensor: The calculated focal loss.
+    """
     def __init__(self, alpha=1, gamma=2):
         super(FocalLoss, self).__init__()
         self.alpha = alpha
         self.gamma = gamma
 
     def forward(self, input, target):
+        """
+        Calculate the focal loss.
+
+        Args:
+            input (torch.Tensor): The model's predicted probabilities.
+            target (torch.Tensor): The ground truth labels.
+
+        Returns:
+            torch.Tensor: The calculated focal loss.
+        """
         ce_loss = nn.CrossEntropyLoss()(input, target)
         pt = torch.exp(-ce_loss)
         focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
@@ -196,6 +288,17 @@ class FocalLoss(nn.Module):
 
 
 class CombinedLoss(nn.Module):
+    """
+    Combined Loss function for multi-objective learning.
+
+    Args:
+        alpha (float): Weight factor for cross-entropy loss.
+        beta (float): Weight factor for focal loss.
+        gamma (float): Weight factor for Kullback-Leibler Divergence loss.
+
+    Returns:
+        torch.Tensor: The combined loss.
+    """
     def __init__(self, alpha, beta, gamma):
         super(CombinedLoss, self).__init__()
         self.alpha = alpha
@@ -207,6 +310,16 @@ class CombinedLoss(nn.Module):
         self.kldiv_loss = nn.KLDivLoss(reduction='batchmean')  # Add reduction argument
         
     def forward(self, y_pred, y_true):
+        """
+        Calculate the combined loss.
+
+        Args:
+            y_pred (torch.Tensor): The model's predicted probabilities.
+            y_true (torch.Tensor): The ground truth labels.
+
+        Returns:
+            torch.Tensor: The combined loss.
+        """
         ce_loss = self.cross_entropy(y_pred, y_true)
         focal_loss = self.focal_loss(y_pred, y_true)
         
@@ -221,6 +334,15 @@ class CombinedLoss(nn.Module):
 
 
 def get_model(total_classes):
+    """
+    Create a model for classification with a modified classifier head.
+
+    Args:
+        total_classes (int): The number of output classes.
+
+    Returns:
+        torch.nn.Module: The model with the modified classifier.
+    """
     model = efficientnet_b3(pretrained=True)
     model.classifier[1] = nn.Linear(model.classifier[1].in_features,
                                     total_classes,
@@ -228,6 +350,15 @@ def get_model(total_classes):
     return model
 
 def get_metric_dictionary(total_classes):
+    """
+    Create a dictionary of evaluation metrics for a multi-class classification task.
+
+    Args:
+        total_classes (int): The number of output classes.
+
+    Returns:
+        dict: A dictionary containing various evaluation metrics.
+    """
     print("total_classes : ", total_classes, type(total_classes))
     metric_dictionary = {
         "MulticlassAccuracy" : MulticlassAccuracy(num_classes=total_classes).to(device),
@@ -275,24 +406,14 @@ if __name__ == '__main__':
     log_param("batch_size", batch_size)
     log_param("num_epochs", num_epochs)
     
-    #print(glob(os.path.join("..","..","..","..","..", "isic_datasets", "*")))
     
     rgb_df = pd.read_csv(os.path.join("..","..","..","..","..", "isic_datasets","sorted_df.csv"))
     
-    
-    #rgb_df = rgb_df.head(1000)
-    #print(rgb_df.columns)
-    #print(rgb_df['description'].value_counts())
-    #print(rgb_df['label'].value_counts())
-    #RGBDataset(rgb_df)
-    
-    df = pd.read_csv(os.path.join("..","..","..","compiled_df_server.csv"))
-    #print(df.columns)
-    #print(df)
+
+    df = pd.read_csv(os.path.join("..","..","..","compiled_df_server_new.csv"))
+
     print(df[df.index.duplicated()])
     
-    
-
     #matching labels from isic data and id2 data
     
     renaming_description = {'MM':'melanoma',
@@ -313,23 +434,16 @@ if __name__ == '__main__':
                        }
     
     condition = (df['description'] == "benign keratosis")
-    #print("condition : ", condition)
+
     df.loc[condition, 'label'] = 4 # labeling Seborrhoische Keratose to label of ISIC data  benign keratosis i.e 4
     
     df['description'] = df['description'].replace(renaming_description)
-    
-    
-    #print(df["description"].value_counts())
-    #print(df["label"].value_counts())
-    #df = df[df['description'] != "Seborrhoische Keratose"]
-    #df = df[df['description'] != "squamous cell carcinoma"]
-    
+
     label_to_remove = 5 # Only 2 data points available for this class
 
     df = df[df['label'] != label_to_remove]
     df['label'] = df['label'].replace(renaming_labels)
-    #print(df["description"].value_counts())
-    #print(df["label"].value_counts())
+
     df.reset_index(inplace=True)
     
     total_classes = int(max(set(df['label'].values))+1)
@@ -354,10 +468,7 @@ if __name__ == '__main__':
                                                         #"translation", "cut_out", #"shuffle_channels",
                                                         #"horizontal_flip", "vertical_flip"])
         val_dataset = PickleDataset(dataframe=val_df, transform=test_transform)
-        
-        
-        #rgb_df = rgb_df.sample(n= 1000)
-        
+
         val_rgb_df =rgb_df[rgb_df["fold"]==i]
         train_rgb_df = rgb_df[rgb_df["fold"]!=i]
         print("val_rgb_df.shape, train_rgb_df.shape : ", val_rgb_df.shape, train_rgb_df.shape)
@@ -368,18 +479,18 @@ if __name__ == '__main__':
         
         # Access dataset samples using indexing
         print("train_dataset : ", train_dataset)
-        #data_sample, label = train_dataset[0]
+
         for data, label in train_dataset:
             print(data.shape, label.shape)
             break 
         
         # Access dataset samples using indexing
         print("train_rgb_dataset : ", train_rgb_dataset)
-        #data_sample, label = train_dataset[0]
+
         for data, label in train_rgb_dataset:
             print(data.shape, label.shape)
             break 
-        #a=b
+
         trainloader = DataLoader(train_dataset, batch_size=batch_size, num_workers=32, shuffle=True)
         valloader = DataLoader(val_dataset, batch_size=batch_size, num_workers=32, shuffle=True)
     
@@ -394,16 +505,7 @@ if __name__ == '__main__':
         criterion = CombinedLoss(alpha=0.5, beta=0.3, gamma=0.2)
 
         optimizer = optim.Adam(model.parameters(), lr=0.003)
-        
-        #new_model_top = get_model(27, train_rgb_df)
-        #total_classes = len(set(df['label'].values))
-        #new_model_top.load_state_dict(model.state_dict())
-        
-        #new_model = nn.Sequential(new_model_top, nn.Linear(len(set(rgb_df['label'].values)), len(set(df['label'].values))))
-        #new_model = new_model.to(device)
-        #criterion = CombinedLoss(alpha=0.5, beta=0.3, gamma=0.2)
-        #criterion = nn.CrossEntropyLoss()
-        #optimizer = optim.Adam(model.parameters(), lr=0.003)
+
         # Training loop
         
         best_model_path = os.path.join("models", "best_model.pth")  # Path to save the best model
@@ -439,4 +541,4 @@ if __name__ == '__main__':
                 
 
         print(f"Finished Training fold : {i}")
-        
+        break
